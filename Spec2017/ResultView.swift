@@ -241,6 +241,7 @@ struct AnalyticsSection: View {
                             color: .orange,
                             scale: 1e9 // nJ to J
                         )
+                        .id("power-" + selectedBench + resultPath)
                         
                         PerformanceChart(
                             title: "CPU Frequency (MHz)",
@@ -250,6 +251,7 @@ struct AnalyticsSection: View {
                             color: .blue,
                             scale: 1e6 // Hz to MHz
                         )
+                        .id("freq-" + selectedBench + resultPath)
                     }
                     .padding(.vertical, 8)
                 }
@@ -266,7 +268,6 @@ struct PerformanceChart: View {
     let color: Color
     let scale: Double
     @State private var dataPoints: [ChartData] = []
-    @State private var separators: [Int] = []
     
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -287,9 +288,9 @@ struct PerformanceChart: View {
                     Spacer()
                     Text("0")
                 }
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
-                .foregroundColor(.secondary)
-                .frame(height: 240)
+                .font(.system(size: 14, weight: .bold, design: .monospaced))
+                .foregroundColor(.primary.opacity(0.8))
+                .frame(height: 320)
                 
                 GeometryReader { geo in
                     ZStack {
@@ -308,29 +309,18 @@ struct PerformanceChart: View {
                         
                         if dataPoints.isEmpty {
                             Text("No data")
-                                .font(.headline)
+                                .font(.title3.bold())
                                 .foregroundColor(.secondary)
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                         } else {
-                            // Separator Lines (Vertical lines between sub-tasks)
-                            Path { path in
-                                let maxX = Double(dataPoints.count > 1 ? dataPoints.last!.time : 1)
-                                for sepTime in separators {
-                                    let x = geo.size.width * (Double(sepTime) / maxX)
-                                    path.move(to: CGPoint(x: x, y: 0))
-                                    path.addLine(to: CGPoint(x: x, y: geo.size.height))
-                                }
-                            }
-                            .stroke(Color.secondary.opacity(0.4), style: StrokeStyle(lineWidth: 1.5, dash: [5, 5]))
-                            
                             // Data Path
                             Path { path in
-                                let maxX = Double(dataPoints.count > 1 ? dataPoints.last!.time : 1)
+                                let maxX = dataPoints.last?.time ?? 1.0
                                 let maxY = maxValue
                                 let yRange = maxY > 0 ? maxY : 1.0
                                 
                                 for (index, point) in dataPoints.enumerated() {
-                                    let x = geo.size.width * (Double(point.time) / maxX)
+                                    let x = geo.size.width * (point.time / maxX)
                                     let y = geo.size.height - (geo.size.height * (point.value / yRange))
                                     if index == 0 {
                                         path.move(to: CGPoint(x: x, y: y))
@@ -339,55 +329,62 @@ struct PerformanceChart: View {
                                     }
                                 }
                             }
-                            .stroke(color, lineWidth: 2.5)
+                            .stroke(color, lineWidth: 3)
                         }
                     }
                 }
-                .frame(height: 240)
+                .frame(height: 320)
                 .background(Color.secondary.opacity(0.08))
-                .cornerRadius(6)
+                .cornerRadius(8)
             }
             
             // X-axis (Time) adaptive labels
             GeometryReader { xAxisGeo in
                 if let lastTime = dataPoints.last?.time, lastTime > 0 {
                     let ticks = getXAxisTicks(total: lastTime)
-                    let maxX = Double(lastTime)
+                    let maxX = lastTime
                     
                     ZStack(alignment: .topLeading) {
                         ForEach(ticks, id: \.self) { tick in
                             let xPos = xAxisGeo.size.width * (Double(tick) / maxX)
+                            let isLast = Double(tick) >= maxX * 0.95
+                            
                             Text("\(tick)s")
-                                .font(.system(size: 10, weight: .medium, design: .monospaced))
-                                .foregroundColor(.secondary)
+                                .font(.system(size: 14, weight: .bold, design: .monospaced))
+                                .foregroundColor(.primary.opacity(0.8))
                                 .fixedSize()
-                                .position(x: xPos, y: 10)
+                                .position(x: isLast ? xPos - 20 : xPos, y: 15)
                         }
                     }
                 }
             }
-            .frame(height: 25)
-            .padding(.leading, 45) // Offset for larger Y-axis labels
+            .frame(height: 35)
+            .padding(.leading, 65) // Offset for larger Y-axis labels
         }
         .onAppear(perform: loadData)
         .onChange(of: benchName) { _ in loadData() }
     }
     
-    private func getXAxisTicks(total: Int) -> [Int] {
-        let friendlySteps = [1, 2, 5, 10, 15, 20, 30, 60, 120, 180, 300, 600, 900, 1200, 1800, 3600]
-        let maxTicks = 6
-        let idealStep = Double(total) / Double(maxTicks)
+    private func getXAxisTicks(total: Double) -> [Int] {
+        let friendlySteps = [1, 2, 5, 10, 15, 20, 30, 60, 120, 180, 240, 300, 600, 900, 1200, 1800, 3600]
+        let maxTicks = 5
+        let idealStep = total / Double(maxTicks)
         let step = friendlySteps.first { Double($0) >= idealStep } ?? 3600
         
         var ticks: [Int] = []
-        for i in stride(from: 0, through: total, by: step) {
+        for i in stride(from: 0, through: Int(total), by: step) {
             ticks.append(i)
         }
-        // If the gap to the last point is very small, we might want to include the final time
-        if let last = ticks.last, total - last > step / 2 {
-            // Optional: ticks.append(total)
+        
+        if let last = ticks.last {
+            if Double(Int(total) - last) > Double(step) * 0.3 {
+                ticks.append(Int(total))
+            } else if last != Int(total) {
+                ticks.removeLast()
+                ticks.append(Int(total))
+            }
         }
-        return ticks
+        return Array(Set(ticks)).sorted()
     }
     
     private var maxValue: Double {
@@ -403,37 +400,32 @@ struct PerformanceChart: View {
     }
     
     private func loadData() {
+        dataPoints = []
         let filePath = "\(path)/\(folder)/\(benchName).csv"
         guard let content = try? String(contentsOfFile: filePath, encoding: .utf8) else {
             dataPoints = []
-            separators = []
             return
         }
         let lines = content.components(separatedBy: .newlines)
         var points: [ChartData] = []
-        var seps: [Int] = []
-        var second = 0
+        var currentTime: Double = 0
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed == "-1" {
-                if !points.isEmpty {
-                    seps.append(points.last!.time)
-                }
                 continue
             }
             if let val = Double(trimmed), val > 0 {
-                points.append(ChartData(time: second, value: val / scale))
-                second += 1
+                points.append(ChartData(time: currentTime, value: val / scale))
+                currentTime += 0.1 // 10Hz sampling
             }
         }
         dataPoints = points
-        separators = seps
     }
 }
 
 struct ChartData: Identifiable {
     let id = UUID()
-    let time: Int
+    let time: Double
     let value: Double
 }
 

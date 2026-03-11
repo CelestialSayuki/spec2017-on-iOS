@@ -368,8 +368,6 @@ void specEntry(const char* benchname, const char* resultpath, double results[7],
         if(__warp && bench != 500) __freelist(); /* memory leak patch */
         total_time += et - st;
         total_nj += usage2.ri_energy_nj - usage1.ri_energy_nj;
-        fprintf(powerfile, "-1\n");
-        fprintf(frequencyfile, "-1\n");
     }
     
     if(bench == 500) __freelist(); // For 500.perlbench we only need to clean up once.
