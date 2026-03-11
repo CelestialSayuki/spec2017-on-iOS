@@ -9,8 +9,8 @@
 #include <sys/param.h>
 #include <stdint.h>
 #include "specEntry.h"
-#define SLEEP_TIME 10 // in second
-#define INT_INTERVAL 60 // in second
+int g_sleep_time = 10;
+int g_int_interval = 60;
 
 typedef int entry_t(int argc, char *argv[], char *envp[]);
 #define f(name, N) int (name##_entry##N)(int argc, char *argv[], char *envp[])
@@ -131,7 +131,7 @@ entry_t (*function_mapping[]) = {
 mach_timebase_info_data_t _clock_timebase;
 pid_t pid;
 int countsize = 0;
-struct proc_threadcounts *start = NULL, *last = NULL;
+struct proc_threadcounts *sample_start = NULL, *sample_last = NULL;
 static inline double mach_time_to_seconds(uint64_t mach_time) {
     double nanos = (mach_time * _clock_timebase.numer) / _clock_timebase.denom;
     return nanos / 1e9;
@@ -176,11 +176,11 @@ void init() {
 static bool logging = false;
 uint64_t target_tid;
 uint64_t cycle_avg, cycle_min, cycle_max, energy_avg, energy_min, energy_max;
-uint64_t time_easple = 0;
+uint64_t time_elapse = 0;
 
 FILE *powerfile, *frequencyfile;
 
-void log_routine(void *arg) {
+void *log_routine(void *arg) {
     bool first = true;
     uint64_t cycle_start, cycle_end, energy_start, energy_end, time_start, time_end;
     struct sched_param param;
@@ -191,20 +191,20 @@ void log_routine(void *arg) {
     
     // this loop sample energy and cycle every second
     while (logging) {
-        proc_pidinfo(pid, PROC_PIDTHREADCOUNTS, target_tid, start, countsize);
+        proc_pidinfo(pid, PROC_PIDTHREADCOUNTS, target_tid, sample_start, countsize);
         uint64_t start_time = mach_absolute_time();
-        struct proc_threadcounts_data *p2 = &(start->ptc_counts[index]);
+        struct proc_threadcounts_data *p2 = &(sample_start->ptc_counts[index]);
         if(first) {
             first = false;
             cycle_start = p2->ptcd_cycles;
             energy_start = p2->ptcd_energy_nj;
             time_start = p2->ptcd_user_time_mach + p2->ptcd_system_time_mach;
-            memcpy(last, start, countsize);
+            memcpy(sample_last, sample_start, countsize);
             usleep((1 - mach_time_to_seconds(mach_absolute_time() - start_time)) * 1e6);
             continue;
         }
         // 0 is P-CORE 1 is E-CORE
-        struct proc_threadcounts_data *p1 = &(last->ptc_counts[index]);
+        struct proc_threadcounts_data *p1 = &(sample_last->ptc_counts[index]);
 
         double time_elaspe = mach_time_to_seconds((p2->ptcd_user_time_mach + p2->ptcd_system_time_mach) - (p1->ptcd_user_time_mach + p1->ptcd_system_time_mach));
         
@@ -229,23 +229,24 @@ void log_routine(void *arg) {
         // Time
         time_end = p2->ptcd_user_time_mach + p2->ptcd_system_time_mach;
         
-        memcpy(last, start, countsize);
+        memcpy(sample_last, sample_start, countsize);
         usleep((0.1 - mach_time_to_seconds(mach_absolute_time() - start_time)) * 1e6);
     }
-    time_easple += time_end - time_start;
+    time_elapse += time_end - time_start;
     
     cycle_avg += cycle_end - cycle_start;
     energy_avg += energy_end - energy_start;
+    return NULL;
 }
 
 void sighand(int signo)
 {
-  usleep(SLEEP_TIME * 1e6);
+  usleep(g_sleep_time * 1e6);
   return;
 }
 
 pthread_t maint;
-void int_routine(void *arg) {
+void *int_routine(void *arg) {
     struct sched_param param;
     param.sched_priority = *(bool*)arg ? 6 : 47;
     pthread_setschedparam(pthread_self(), SCHED_OTHER, &param);
@@ -263,8 +264,9 @@ void int_routine(void *arg) {
 
     while(logging != false) {
         pthread_kill(maint, SIGALRM);
-        sleep(INT_INTERVAL);
+        sleep(g_int_interval);
     }
+    return NULL;
 }
 
 bool __warp = false;
@@ -273,7 +275,9 @@ bool __warp = false;
 /**
     @param results[7] Layout : [ usertime, avg power, min power, max power, avg frequency, min frequency, max frequency]
  */
-void specEntry(const char* benchname, const char* resultpath, double results[7], bool eCore, bool frequency) {
+void specEntry(const char* benchname, const char* resultpath, double results[7], bool eCore, bool frequency, int int_interval, int sleep_time) {
+    g_int_interval = int_interval;
+    g_sleep_time = sleep_time;
     
     sigset_t mask;
     sigfillset(&mask); /* unMask all allowed signals */
@@ -295,8 +299,8 @@ void specEntry(const char* benchname, const char* resultpath, double results[7],
     powerfile = fopen(powerpath, "w");
     frequencyfile = fopen(frequencypath, "w");
     
-    fprintf(powerfile, "Cycle Per Second\n");
-    fprintf(frequencyfile, "Energy Per Second\n");
+//    fprintf(powerfile, "Cycle Per Second\n");
+//    fprintf(frequencyfile, "Energy Per Second\n");
     
     free(powerpath);
     free(frequencypath);
@@ -304,8 +308,8 @@ void specEntry(const char* benchname, const char* resultpath, double results[7],
     // init energy, cycle counting
     int len = 2;
     countsize = sizeof(struct proc_threadcounts) + len * sizeof(struct proc_threadcounts_data);
-    start = (struct proc_threadcounts*)malloc(countsize);
-    last = (struct proc_threadcounts*)malloc(countsize);
+    sample_start = (struct proc_threadcounts*)malloc(countsize);
+    sample_last = (struct proc_threadcounts*)malloc(countsize);
     
     // initialization
     extern uint64_t __overhead; __overhead = 0;
@@ -364,21 +368,23 @@ void specEntry(const char* benchname, const char* resultpath, double results[7],
         if(__warp && bench != 500) __freelist(); /* memory leak patch */
         total_time += et - st;
         total_nj += usage2.ri_energy_nj - usage1.ri_energy_nj;
+        fprintf(powerfile, "-1\n");
+        fprintf(frequencyfile, "-1\n");
     }
     
     if(bench == 500) __freelist(); // For 500.perlbench we only need to clean up once.
-    time_easple = mach_time_to_seconds(time_easple);
+    time_elapse = mach_time_to_seconds(time_elapse);
     logging = false;
     results[0] = total_time - mach_time_to_seconds(__overhead); /* gcc workaround */
-    results[1] = frequency ? (energy_avg / time_easple) / 1e9 : total_nj / 1e9 / total_time;
+    results[1] = frequency ? (energy_avg / time_elapse) / 1e9 : total_nj / 1e9 / total_time;
     results[2] = energy_min / 1e9;
     results[3] = energy_max / 1e9;
-    results[4] = (cycle_avg / time_easple) / 1e6;
+    results[4] = (cycle_avg / time_elapse) / 1e6;
     results[5] = cycle_min / 1e6;
     results[6] = cycle_max / 1e6;
     
-    free(start);
-    free(last);
+    free(sample_start);
+    free(sample_last);
     fclose(powerfile);
     fclose(frequencyfile);
 }

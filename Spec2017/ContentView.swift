@@ -17,21 +17,22 @@ enum BenchmarkSelection : String, CaseIterable {
     case Fp = "Floating Point"
 }
 
-
-// global variables used by threads
 var results: [Double] = [0, 0, 0, 0, 0, 0, 0]
 var bench_: String = ""
 var resultpath_: String = ""
 var running_: Int = 0
 var testECore_: Bool = false
 var frequency_: Bool = false
+var runPeriod_: Int = 60
+var restPeriod_: Int = 10
 
-func runBench(_ bench: String, _ resultpath: String, _ testECore: Bool, _ frequency: Bool) -> [Double] {
+func runBench(_ bench: String, _ resultpath: String, _ testECore: Bool, _ frequency: Bool, _ runPeriod: Int, _ restPeriod: Int) -> [Double] {
     bench_ = bench
     resultpath_ = resultpath
     testECore_ = testECore
     frequency_ = frequency
-    
+    runPeriod_ = runPeriod
+    restPeriod_ = restPeriod
     var thread: pthread_t? = nil
     var qosAttribute = pthread_attr_t()
     pthread_attr_init(&qosAttribute)
@@ -44,27 +45,17 @@ func runBench(_ bench: String, _ resultpath: String, _ testECore: Bool, _ freque
             param.sched_priority = 6
             pthread_setschedparam(pthread_self(), SCHED_OTHER, &param)
         }
-        
-        // 1. setup the running directory
         let benchRunPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .path() + bench_
+            .appendingPathComponent(bench_).path
         do {
             let bundleInputPath = Bundle.main.bundlePath + "/Input/" + bench_
             try FileManager.default.copyItem(atPath: bundleInputPath, toPath: benchRunPath)
-        } catch _ as NSError {
-            // do nothing if directory already exists
-        }
-        
-        // 2. set current directory to run directory
+        } catch _ as NSError {}
         FileManager.default.changeCurrentDirectoryPath(benchRunPath)
-        
-        // 3. run the benchmark
-        specEntry(bench_, resultpath_, &results, testECore_, frequency_)
+        specEntry(bench_, resultpath_, &results, testECore_, frequency_, Int32(runPeriod_), Int32(restPeriod_))
         running_ = 0
-        
         return UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1)
     }, nil)
-    
     // since pthread_join() effects the E-Core run, scan memory every 5s to check the state.
     while(true) {
         sleep(5);
@@ -75,10 +66,19 @@ func runBench(_ bench: String, _ resultpath: String, _ testECore: Bool, _ freque
     return results
 }
 
+struct BenchmarkRun: Identifiable, Hashable, Codable {
+    var id = UUID()
+    let name: String
+    let results: [String:[Double]]
+    let isECore: Bool
+    let isFrequencyLogged: Bool
+    let date: Date
+    let resultPath: String
+}
+
 struct ContentView: View {
     @State private var selection = Set<String>()
-    @State var segmentationSelection : BenchmarkSelection = .Int
-    @State private var isEditMode: EditMode = .active
+    @State private var sidebarSelection: SidebarItem? = .integer
     @State private var isRunning = false
     @State private var currentBench = ""
     @State private var currentIndex = 0
@@ -86,153 +86,426 @@ struct ContentView: View {
     @State private var testECore = false
     @State private var frequency = false
     @State private var benchResultPath: String = ""
-    let itemsInt = [
-        "500.perlbench_r",
-        "502.gcc_r",
-        "505.mcf_r",
-        "520.omnetpp_r",
-        "523.xalancbmk_r",
-        "525.x264_r",
-        "531.deepsjeng_r",
-        "541.leela_r",
-        "548.exchange2_r",
-        "557.xz_r",
-    ]
-    
-    let itemsFp = [
-        "503.bwaves_r",
-        "507.cactuBSSN_r",
-        "508.namd_r",
-        "510.parest_r",
-        "511.povray_r",
-        "519.lbm_r",
-        "521.wrf_r",
-        "527.cam4_r",
-        "526.blender_r",
-        "538.imagick_r",
-        "544.nab_r",
-        "549.fotonik3d_r",
-        "554.roms_r",
-    ]
-    
-    @State private var isPresentingConfirm: Bool = false
-    
     @State private var runTimes: [String:[Double]] = [:]
-    @State private var path: [[String:[Double]]] = []
-    var body: some View {
-        ZStack {
-            NavigationStack(path: $path) {
-                VStack(spacing: 0) {
-                    Picker("", selection: $segmentationSelection) {
-                        ForEach(BenchmarkSelection.allCases, id: \.self) { option in
-                            Text(option.rawValue).disabled(true)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    
-                    List(selection: $selection) {
-                        ForEach(segmentationSelection == BenchmarkSelection.Int ? itemsInt : itemsFp, id: \.self) { name in
-                            Text(name)
-                        }
-                        Section(footer: VStack {
-                            Text("\n\nCompiler            : Apple Clang14/Flang17\nCompiler Flags : -Ofast -arch arm64\nAuthor                 : junjie1475;jht5132").font(.system(size: 16)).bold()
-                        }) {}
-                    }
-                         .environment(\.editMode, self.$isEditMode)
-                         .listStyle(.grouped)
-                    
-                    HStack {
-                        Button(action: {
-                            for string in segmentationSelection == BenchmarkSelection.Int ? itemsInt : itemsFp {
-                                selection.insert(string)
-                            }
-                        }, label: {Text("Select All")})
-                        Spacer()
-                        Button(action: {
-                            testECore = !testECore
-                        }, label: {Text(testECore ? "Test P Core" : "Test E Core")})
-                        Spacer()
-                        Button(action: {
-                            frequency = !frequency
-                        }, label: {Text(frequency ? "unlog-freq" : "log-freq")})
-                        Spacer()
-                        Button(action: {
-                            // check if already runned
-                            for bench in selection {
-                                if runnedBench.contains(bench) {
-                                    isPresentingConfirm = true
-                                    return
-                                }
-                            }
-                            // run the selected benchmarks
-                            currentIndex = 0
-                            currentBench = ""
-                            isRunning = true
-                            runTimes.removeAll()
-                            
-                            Task.detached {
-                                let now = Date()
-                                let formatter = DateFormatter()
-                                formatter.timeZone = TimeZone.current
-                                formatter.dateFormat = "yyyy-MM-dd HH:mm"
-                                let dateString = formatter.string(from: now)
-                                
-                                benchResultPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-                                    .path() + "Results/" + dateString
-                                
-                                do {
-                                    try FileManager.default.createDirectory(atPath: benchResultPath, withIntermediateDirectories: false)
-                                    try FileManager.default.createDirectory(atPath: benchResultPath + "/Power", withIntermediateDirectories: false)
-                                    try FileManager.default.createDirectory(atPath: benchResultPath + "/Frequency", withIntermediateDirectories: false)
-                                } catch _ as NSError {}
-                                
-                                for bench in selection.sorted(by: {$0 < $1}) {
-                                    currentBench = bench
-                                    currentIndex += 1
-                                    runnedBench.append(bench)
-                                    runTimes[bench] = runBench(bench, benchResultPath, testECore, frequency)
-                                }
-                                isRunning = false
-                                path.append(runTimes)
-                            }
-
-                        }, label: {Text("Run")})
-                        .disabled(selection.isEmpty)
-                        .confirmationDialog("Are you sure?",
-                                            isPresented: $isPresentingConfirm) {
-                            Button("Quit the App?", role: .destructive) {
-                                exit(0)
-                            }
-                        } message: {
-                            Text("Due to some ios limitation, you need to restart the App to run spec")
-                        }
-                        .navigationDestination(for: [String:[Double]].self) { runTimes in
-                            ResultView(runTimes: $runTimes, frequency: $frequency, testECore: $testECore, benchResultPath: $benchResultPath).navigationTitle("Result")
-                        }
-                    }.padding()
-                }
-                .navigationTitle("SPECrate2017")
+    @State private var history: [BenchmarkRun] = []
+    @State private var isCancelled = false
+    @State private var runPeriod: Int = 60
+    @State private var restPeriod: Int = 10
+    @State private var showAutoResult = false
+    enum SidebarItem: String, CaseIterable, Identifiable {
+        case integer = "Integer"
+        case floatingPoint = "Floating Point"
+        case history = "Results"
+        var id: String { rawValue }
+        var icon: String {
+            switch self {
+            case .integer: return "number"
+            case .floatingPoint: return "waveform.path.ecg"
+            case .history: return "clock.arrow.circlepath"
             }
-            if isRunning == true {
-                VisualEffectView(effect: UIBlurEffect(style: .dark)).ignoresSafeArea(.all)
-                VStack {
-                    Text("Running \(currentBench)[\(currentIndex)/\(selection.count)]")
-                        .font(.title)
-                        .foregroundColor(.white)
+        }
+    }
+    let itemsInt = [
+        "500.perlbench_r", "502.gcc_r", "505.mcf_r", "520.omnetpp_r",
+        "523.xalancbmk_r", "525.x264_r", "531.deepsjeng_r", "541.leela_r",
+        "548.exchange2_r", "557.xz_r"
+    ]
+    let itemsFp = [
+        "503.bwaves_r", "507.cactuBSSN_r", "508.namd_r", "510.parest_r",
+        "511.povray_r", "519.lbm_r", "521.wrf_r", "527.cam4_r",
+        "526.blender_r", "538.imagick_r", "544.nab_r", "549.fotonik3d_r",
+        "554.roms_r"
+    ]
+    @State private var isPresentingConfirm: Bool = false
+    var body: some View {
+        NavigationView {
+            List {
+                Section(header: Text("Benchmarks")) {
+                    NavigationLink(tag: SidebarItem.integer, selection: $sidebarSelection, destination: {
+                        BenchmarkListView(items: itemsInt, selection: $selection, testECore: $testECore, frequency: $frequency, runPeriod: $runPeriod, restPeriod: $restPeriod, isRunning: $isRunning, runAction: runBenchmarks)
+                    }) {
+                        Label(SidebarItem.integer.rawValue, systemImage: SidebarItem.integer.icon)
+                    }
+                    NavigationLink(tag: SidebarItem.floatingPoint, selection: $sidebarSelection, destination: {
+                        BenchmarkListView(items: itemsFp, selection: $selection, testECore: $testECore, frequency: $frequency, runPeriod: $runPeriod, restPeriod: $restPeriod, isRunning: $isRunning, runAction: runBenchmarks)
+                    }) {
+                        Label(SidebarItem.floatingPoint.rawValue, systemImage: SidebarItem.floatingPoint.icon)
+                    }
                 }
+                Section(header: Text("Activity")) {
+                    NavigationLink(tag: SidebarItem.history, selection: $sidebarSelection, destination: {
+                        HistoryView(history: $history) {
+                            saveHistory()
+                        }
+                    }) {
+                        Label(SidebarItem.history.rawValue, systemImage: SidebarItem.history.icon)
+                    }
+                }
+            }
+            .navigationTitle("Spec2017")
+            .listStyle(SidebarListStyle())
+            .background(
+                NavigationLink(
+                    destination: ResultView(
+                        runTimes: $runTimes,
+                        frequency: $frequency,
+                        testECore: $testECore,
+                        benchResultPath: $benchResultPath
+                    ),
+                    isActive: $showAutoResult,
+                    label: { EmptyView() }
+                )
+                .hidden()
+            )
+            Text("Select an item from the sidebar")
+                .font(.title2)
+                .foregroundColor(.secondary)
+        }
+        .onAppear {
+            loadHistory()
+        }
+        .overlay(
+            Group {
+                if isRunning {
+                    RunningHUD(
+                        currentBench: currentBench,
+                        currentIndex: currentIndex,
+                        total: selection.count,
+                        isCancelled: isCancelled
+                    ) {
+                        isCancelled = true
+                    }
+                }
+            }
+        )
+    }
+    private func runBenchmarks() {
+        currentIndex = 0
+        currentBench = ""
+        isRunning = true
+        runTimes.removeAll()
+        let currentSelection = selection.sorted(by: { $0 < $1 })
+        let isECore = testECore
+        let freq = frequency
+        let rPeriod = runPeriod
+        let restP = restPeriod
+        Task.detached {
+            let now = Date()
+            let formatter = DateFormatter()
+            formatter.timeZone = TimeZone.current
+            formatter.dateFormat = "yyyy-MM-dd HH:mm"
+            let dateString = formatter.string(from: now)
+            let basePath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            let localBenchResultPath = basePath.appendingPathComponent("Results/\(dateString)").path
+            do {
+                try FileManager.default.createDirectory(atPath: localBenchResultPath, withIntermediateDirectories: true)
+                try FileManager.default.createDirectory(atPath: localBenchResultPath + "/Power", withIntermediateDirectories: false)
+                try FileManager.default.createDirectory(atPath: localBenchResultPath + "/Frequency", withIntermediateDirectories: false)
+            } catch _ as NSError {}
+            var localRunTimes: [String: [Double]] = [:]
+            var localIsCancelled = false
+            for bench in currentSelection {
+                let cancelled = await MainActor.run { isCancelled }
+                if cancelled {
+                    localIsCancelled = true
+                    break
+                }
+                await MainActor.run {
+                    currentBench = bench
+                    currentIndex += 1
+                    runnedBench.append(bench)
+                }
+                let result = await runBenchInDetached(bench, localBenchResultPath, isECore, freq, rPeriod, restP)
+                localRunTimes[bench] = result
+                await MainActor.run {
+                    runTimes[bench] = result
+                }
+            }
+            let finalRunTimes = localRunTimes
+            let finalIsCancelled = localIsCancelled
+            let finalResultPath = localBenchResultPath
+            await MainActor.run {
+                benchResultPath = finalResultPath
+                isRunning = false
+                isCancelled = false
+                if !finalRunTimes.isEmpty {
+                    let newRun = BenchmarkRun(
+                        name: "Run \(history.count + 1)\(finalIsCancelled ? " (Stopped)" : "")",
+                        results: finalRunTimes,
+                        isECore: isECore,
+                        isFrequencyLogged: freq,
+                        date: Date(),
+                        resultPath: "Results/\(dateString)"
+                    )
+                    history.append(newRun)
+                    saveHistory()
+                    showAutoResult = true
+                }
+            }
+        }
+    }
+    
+    private func saveHistory() {
+        let encoder = JSONEncoder()
+        if let encoded = try? encoder.encode(history) {
+            let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("history.json")
+            try? encoded.write(to: url)
+        }
+    }
+    
+    private func loadHistory() {
+        let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("history.json")
+        if let data = try? Data(contentsOf: url) {
+            let decoder = JSONDecoder()
+            if let decoded = try? decoder.decode([BenchmarkRun].self, from: data) {
+                history = decoded
             }
         }
     }
 }
 
-struct VisualEffectView: UIViewRepresentable {
-    var effect: UIVisualEffect?
-    func makeUIView(context: UIViewRepresentableContext<Self>) -> UIVisualEffectView { UIVisualEffectView() }
-    func updateUIView(_ uiView: UIVisualEffectView, context: UIViewRepresentableContext<Self>) { uiView.effect = effect }
+// Helper to run benchmark in detached task correctly
+func runBenchInDetached(_ bench: String, _ path: String, _ core: Bool, _ freq: Bool, _ runPeriod: Int, _ restPeriod: Int) async -> [Double] {
+    return runBench(bench, path, core, freq, runPeriod, restPeriod)
 }
-//
-//struct ContentView_Previews: PreviewProvider {
-//    static var previews: some View {
-//        ContentView()
-//    }
-//}
+
+// MARK: - Subviews
+
+struct BenchmarkListView: View {
+    let items: [String]
+    @Binding var selection: Set<String>
+    @Binding var testECore: Bool
+    @Binding var frequency: Bool
+    @Binding var runPeriod: Int
+    @Binding var restPeriod: Int
+    @Binding var isRunning: Bool
+    let runAction: () -> Void
+    @State private var isEditMode: EditMode = .active
+    private var numberFormatter: NumberFormatter {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .none
+        return formatter
+    }
+    var body: some View {
+        List(selection: $selection) {
+            Section(header: Text("Configuration")) {
+                Toggle(isOn: $testECore) {
+                    Label {
+                        VStack(alignment: .leading) {
+                            Text("Target Core")
+                            Text(testECore ? "E-Core" : "P-Core")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    } icon: {
+                        Image(systemName: "cpu")
+                            .foregroundColor(.accentColor)
+                    }
+                }
+                Toggle(isOn: $frequency) {
+                    Label("Log Frequency", systemImage: "waveform.path.ecg")
+                }
+                Stepper(value: $runPeriod, in: 5...3600, step: 5) {
+                    HStack {
+                        Label("Run Period", systemImage: "bolt.fill")
+                        Spacer()
+                        TextField("", value: $runPeriod, formatter: numberFormatter)
+                            .keyboardType(.numberPad)
+                            .multilineTextAlignment(.trailing)
+                            .frame(maxWidth: 45)
+                        Text("s")
+                            .foregroundColor(.secondary)
+                            .padding(.trailing, 4)
+                    }
+                }
+                Stepper(value: $restPeriod, in: 0...600, step: 5) {
+                    HStack {
+                        Label("Rest Period", systemImage: "snowflake")
+                        Spacer()
+                        TextField("", value: $restPeriod, formatter: numberFormatter)
+                            .keyboardType(.numberPad)
+                            .multilineTextAlignment(.trailing)
+                            .frame(maxWidth: 45)
+                        Text("s")
+                            .foregroundColor(.secondary)
+                            .padding(.trailing, 4)
+                    }
+                }
+            }
+            Section(header: Text("Available Workloads")) {
+                ForEach(items, id: \.self) { item in
+                    Text(item)
+                        .font(.body)
+                }
+            }
+            Section(header: Text("Environment Details")) {
+                HStack {
+                    Label("Compiler", systemImage: "terminal")
+                    Spacer()
+                    Text("Apple Clang14 / Flang17")
+                        .foregroundColor(.secondary)
+                }
+                
+                HStack {
+                    Label("Optimization", systemImage: "sparkles")
+                    Spacer()
+                    Text("-Ofast -arch arm64")
+                        .foregroundColor(.secondary)
+                }
+                
+                HStack {
+                    Label("Authors", systemImage: "person.2.fill")
+                    Spacer()
+                    Text("junjie1475, jht5132")
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+        .environment(\.editMode, $isEditMode)
+        .listStyle(InsetGroupedListStyle())
+        .toolbar {
+            ToolbarItemGroup(placement: .bottomBar) {
+                Button("Select All") {
+                    selection = Set(items)
+                }
+                Spacer()
+                Button(action: runAction) {
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 20))
+                }
+                .disabled(selection.isEmpty || isRunning)
+            }
+        }
+        .navigationTitle("Benchmarks")
+    }
+}
+
+struct HistoryView: View {
+    @Binding var history: [BenchmarkRun]
+    var onUpdate: () -> Void
+    private var dateFormatter: DateFormatter {
+        let df = DateFormatter()
+        df.dateStyle = .medium
+        df.timeStyle = .short
+        return df
+    }
+    private func deleteItems(at offsets: IndexSet) {
+        let reversedHistory = Array(history.reversed())
+        for index in offsets {
+            let run = reversedHistory[index]
+            let basePath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            let runPath = basePath.appendingPathComponent(run.resultPath)
+            try? FileManager.default.removeItem(at: runPath)
+            history.removeAll { $0.id == run.id }
+        }
+        onUpdate()
+    }
+    var body: some View {
+        Group {
+            if history.isEmpty {
+                VStack(spacing: 4) {
+                    Image(systemName: "clock")
+                        .font(.system(size: 50))
+                        .foregroundColor(.secondary)
+                        .padding(.bottom, 8)
+                    Text("No Results Yet")
+                        .font(.title2)
+                        .bold()
+                        .foregroundColor(.primary)
+                    Text("Run a benchmark to see history.")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                .padding()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(UIColor.systemGroupedBackground).ignoresSafeArea())
+            } else {
+                List {
+                    ForEach(history.reversed()) { run in
+                        NavigationLink(destination: ResultView(
+                            runTimes: .constant(run.results),
+                            frequency: .constant(run.isFrequencyLogged),
+                            testECore: .constant(run.isECore),
+                            benchResultPath: .constant(FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(run.resultPath).path)
+                        )) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Text(run.name)
+                                        .font(.headline)
+                                        .foregroundColor(.primary)
+                                    Spacer()
+                                    Text(dateFormatter.string(from: run.date))
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                HStack(spacing: 12) {
+                                    Label(run.isECore ? "E-Core" : "P-Core", systemImage: "cpu")
+                                    Label(run.isFrequencyLogged ? "Freq Logged" : "Standard", systemImage: run.isFrequencyLogged ? "waveform.path.ecg" : "bolt.fill")
+                                    Spacer()
+                                    Text("\(run.results.count) items")
+                                }
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                            }
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                    .onDelete(perform: deleteItems)
+                }
+            }
+        }
+        .navigationTitle("History")
+    }
+}
+
+struct RunningHUD: View {
+    let currentBench: String
+    let currentIndex: Int
+    let total: Int
+    let isCancelled: Bool
+    let onCancel: () -> Void
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.3)
+                .ignoresSafeArea()
+            VStack(spacing: 20) {
+                ProgressView()
+                    .scaleEffect(1.5)
+                VStack(spacing: 4) {
+                    Text(isCancelled ? "Stopping..." : "Running Benchmark")
+                        .font(.subheadline)
+                        .foregroundColor(isCancelled ? .orange : .secondary)
+                        .fontWeight(isCancelled ? .bold : .regular)
+                    Text(currentBench)
+                        .font(.headline)
+                }
+                ProgressView(value: Double(currentIndex), total: Double(total > 0 ? total : 1))
+                    .accentColor(isCancelled ? .orange : .blue)
+                    .frame(width: 200)
+                if isCancelled {
+                    Text("Finishing current workload...")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .transition(.opacity)
+                }
+                Button(action: onCancel) {
+                    Text(isCancelled ? "Stopping..." : "Cancel")
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 8)
+                        .background(Color(UIColor.tertiarySystemFill))
+                        .foregroundColor(isCancelled ? .gray : .blue)
+                        .cornerRadius(8)
+                }
+                .disabled(isCancelled)
+            }
+            .padding(30)
+            .background(Color(UIColor.secondarySystemBackground).opacity(0.95))
+            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .shadow(radius: 20)
+        }
+        .animation(.default, value: isCancelled)
+    }
+}

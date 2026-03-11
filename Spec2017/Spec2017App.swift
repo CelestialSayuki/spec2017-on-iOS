@@ -14,10 +14,8 @@ struct Spec2017App: App {
             ContentView()
                 .onAppear {
                     UIApplication.shared.isIdleTimerDisabled = true
-                    
                     let benchResultPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-                        .path() + "Results"
-
+                        .appendingPathComponent("Results").path
                     do {
                         try FileManager.default.createDirectory(atPath: benchResultPath, withIntermediateDirectories: false)
                     } catch _ as NSError {}

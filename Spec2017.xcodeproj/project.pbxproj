@@ -37,6 +37,16 @@
 		B3ACD9052A0E20E800B0B017 /* specbin */ = {isa = PBXFileReference; lastKnownFileType = folder; path = specbin; sourceTree = "<group>"; };
 		B3B205A229BCA71B00EE18E6 /* libc.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libc.tbd; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS16.2.sdk/usr/lib/libc.tbd; sourceTree = DEVELOPER_DIR; };
 		B3D8C6E129B1D51200CBC478 /* Input */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Input; sourceTree = "<group>"; };
+		BB57890B2F619ED100805724 /* LICENSE */ = {isa = PBXFileReference; lastKnownFileType = text; path = LICENSE; sourceTree = "<group>"; };
+		BB57890C2F619ED100805724 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
+		BB5789162F619EEE00805724 /* libFortran_main.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = libFortran_main.a; sourceTree = "<group>"; };
+		BB5789172F619EEE00805724 /* libFortranCommon.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = libFortranCommon.a; sourceTree = "<group>"; };
+		BB5789182F619EEE00805724 /* libFortranDecimal.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = libFortranDecimal.a; sourceTree = "<group>"; };
+		BB5789192F619EEE00805724 /* libFortranEvaluate.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = libFortranEvaluate.a; sourceTree = "<group>"; };
+		BB57891A2F619EEE00805724 /* libFortranLower.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = libFortranLower.a; sourceTree = "<group>"; };
+		BB57891B2F619EEE00805724 /* libFortranParser.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = libFortranParser.a; sourceTree = "<group>"; };
+		BB57891C2F619EEE00805724 /* libFortranRuntime.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = libFortranRuntime.a; sourceTree = "<group>"; };
+		BB57891D2F619EEE00805724 /* libFortranSemantics.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = libFortranSemantics.a; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -62,6 +72,9 @@
 				B398B2B029AF68CD00B03BF9 /* Spec2017 */,
 				B398B2AF29AF68CD00B03BF9 /* Products */,
 				B3ACF4AB29B1F5740051C636 /* Frameworks */,
+				BB57890B2F619ED100805724 /* LICENSE */,
+				BB57890C2F619ED100805724 /* README.md */,
+				BB57891E2F619EEE00805724 /* fortran_lib */,
 			);
 			sourceTree = "<group>";
 		};
@@ -107,6 +120,21 @@
 				B3A8D0C729B4C94A00D47FBB /* libc++.tbd */,
 			);
 			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		BB57891E2F619EEE00805724 /* fortran_lib */ = {
+			isa = PBXGroup;
+			children = (
+				BB5789162F619EEE00805724 /* libFortran_main.a */,
+				BB5789172F619EEE00805724 /* libFortranCommon.a */,
+				BB5789182F619EEE00805724 /* libFortranDecimal.a */,
+				BB5789192F619EEE00805724 /* libFortranEvaluate.a */,
+				BB57891A2F619EEE00805724 /* libFortranLower.a */,
+				BB57891B2F619EEE00805724 /* libFortranParser.a */,
+				BB57891C2F619EEE00805724 /* libFortranRuntime.a */,
+				BB57891D2F619EEE00805724 /* libFortranSemantics.a */,
+			);
+			path = fortran_lib;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -336,11 +364,14 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"Spec2017/Preview Content\"";
-				DEVELOPMENT_TEAM = 6HY5M2KM5P;
+				DEVELOPMENT_TEAM = 2834UVRRJ4;
+				ENABLE_DEBUG_DYLIB = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Spec2017/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -351,7 +382,7 @@
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				LIBRARY_SEARCH_PATHS = (
@@ -359,17 +390,20 @@
 					"$(PROJECT_DIR)/specbin",
 					"$(PROJECT_DIR)/fortran_lib",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 12.6;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = junjie1475.Spec2017;
+				MACOSX_DEPLOYMENT_TARGET = 11.0;
+				MARKETING_VERSION = 3.0;
+				PRODUCT_BUNDLE_IDENTIFIER = celestialsayuki.junjie1475.Spec2017;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "Spec2017/Spec2017-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
+				TVOS_DEPLOYMENT_TARGET = 14.0;
 			};
 			name = Debug;
 		};
@@ -384,11 +418,14 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"Spec2017/Preview Content\"";
-				DEVELOPMENT_TEAM = 6HY5M2KM5P;
+				DEVELOPMENT_TEAM = 2834UVRRJ4;
+				ENABLE_DEBUG_DYLIB = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Spec2017/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -399,7 +436,7 @@
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				LIBRARY_SEARCH_PATHS = (
@@ -407,17 +444,20 @@
 					"$(PROJECT_DIR)/specbin",
 					"$(PROJECT_DIR)/fortran_lib",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 12.6;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = junjie1475.Spec2017;
+				MACOSX_DEPLOYMENT_TARGET = 11.0;
+				MARKETING_VERSION = 3.0;
+				PRODUCT_BUNDLE_IDENTIFIER = celestialsayuki.junjie1475.Spec2017;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "Spec2017/Spec2017-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
+				TVOS_DEPLOYMENT_TARGET = 14.0;
 			};
 			name = Release;
 		};

@@ -4,3 +4,7 @@ specbin/rary.a
 specbin/specEntry.o
 specbin/warp.o
 specbin/Integer/gcc.o
+/Build
+/Spec2017.xcodeproj/xcuserdata
+/Spec2017.xcodeproj/project.xcworkspace/xcuserdata
+/DerivedData
